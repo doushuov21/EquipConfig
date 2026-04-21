@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<style>
+		body {
+			background-color: black;
+			margin: 0;
+			overflow: hidden;
+		}
+		video {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			object-fit: contain;
+		}
+		#stats {
+			position: fixed;
+			right: 10px;
+			bottom: 10px;
+			pointer-events: none;
+			color: lime;
+			font-size: 12px;
+			font-weight: bold;
+			text-shadow: black 0 0 0.3em;
+			white-space: pre-line;
+		}
+	</style>
+</head>
+<body>
+	<script type="text/javascript" src="./peer-stream.js"></script>
+	<script type="text/javascript">
+		// 从 URL 参数获取 WS 地址
+		const params = new URLSearchParams(window.location.search);
+		const wsUrl = params.get('ws') || 'ws://192.168.1.4:10090';
+		
+		// 创建 video 元素
+		const video = document.createElement('video');
+		video.setAttribute('is', 'peer-stream');
+		video.id = wsUrl;
+		document.body.appendChild(video);
+		
+		// 统计信息
+		const stats = document.createElement('pre');
+		stats.id = 'stats';
+		stats.textContent = 'Connecting...';
+		document.body.appendChild(stats);
+		
+		// 等待 ps 变量可用
+		function waitForPS() {
+			if (window.ps) {
+				setupListeners();
+			} else {
+				setTimeout(waitForPS, 100);
+			}
+		}
+		
+		function setupListeners() {
+			ps.addEventListener('playing', aggregateStats, { once: true });
+			ps.addEventListener('message', (e) => {});
+			ps.addEventListener('suspend', (e) => {});
+			ps.addEventListener('playerdisconnected', (e) => {
+				stats.textContent = 'Disconnected';
+				stats.style.color = 'red';
+			});
+		}
+		
+		// 页面加载后等待 ps
+		waitForPS();
+
+		async function aggregateStats() {
+			if (!ps || !ps.pc) return;
+			
+			const statsReport = await ps.pc.getStats(null);
+			stats.innerText = '';
+
+			if (ps.VideoEncoderQP < 27) {
+				stats.style.color = 'lime';
+			} else if (ps.VideoEncoderQP < 36) {
+				stats.style.color = 'orange';
+				stats.innerText += '\nSpotty Network!';
+			} else {
+				stats.style.color = 'red';
+				stats.innerText += '\nBad Network!!';
+			}
+
+			stats.innerText += '\nVideo QP: ' + ps.VideoEncoderQP;
+			
+			statsReport.forEach((stat) => {
+				switch (stat.type) {
+					case 'data-channel': {
+						stats.innerText += '\n✉ Data ↑ ' + stat.bytesSent.toLocaleString() + ' B';
+						stats.innerText += '\n✉ Data ↓ ' + stat.bytesReceived.toLocaleString() + ' B';
+						break;
+					}
+					case 'inbound-rtp': {
+						if (stat.mediaType === 'video') {
+							stats.innerText += '\n' + stat.frameWidth + ' x ' + stat.frameHeight;
+							stats.innerText += '\nFPS: ' + stat.framesPerSecond;
+							stats.innerText += '\nVideo ↓ ' + (stat.bytesReceived / 1024).toFixed(1) + ' KB';
+						}
+						break;
+					}
+					case 'candidate-pair': {
+						if (stat.state === 'succeeded') {
+							stats.innerText += '\nRTT: ' + stat.currentRoundTripTime.toFixed(3) + ' s';
+						}
+						break;
+					}
+				}
+			});
+
+			stats.innerText += '\nTime: ' + ps.currentTime.toFixed(1) + ' s';
+
+			if (ps.timeout) clearTimeout(ps.timeout);
+			ps.timeout = setTimeout(aggregateStats, 1000);
+		}
+	</script>
+</body>
+</html>

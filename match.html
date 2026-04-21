@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备匹配 - 数字孪生</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; height: 100vh; overflow: hidden; }
+        .container { display: flex; height: 100vh; }
+        
+        /* 左侧设备树 */
+        .left-panel { width: 350px; background: #fff; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; }
+        .panel-header { padding: 16px; background: #1890ff; color: #fff; font-size: 16px; font-weight: bold; }
+        .search-box { padding: 12px; border-bottom: 1px solid #e8e8e8; }
+        .search-box input { width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; }
+        .tree-container { flex: 1; overflow-y: auto; padding: 8px; }
+        .tree-node { margin: 2px 0; }
+        .tree-item { display: flex; align-items: center; padding: 8px 12px; cursor: pointer; border-radius: 4px; transition: background 0.2s; }
+        .tree-item:hover { background: #f5f5f5; }
+        .tree-item.selected { background: #e6f7ff; border: 1px solid #1890ff; }
+        .tree-item.matched { border-left: 3px solid #52c41a; }
+        .tree-item.unmatched { border-left: 3px solid #ff4d4f; }
+        .tree-expand { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-right: 4px; font-size: 12px; color: #666; }
+        .tree-icon { margin-right: 8px; font-size: 14px; }
+        .tree-label { flex: 1; font-size: 14px; }
+        .tree-status { font-size: 12px; padding: 2px 6px; border-radius: 2px; }
+        .status-matched { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .status-unmatched { background: #fff1f0; color: #ff4d4f; border: 1px solid #ffa39e; }
+        
+        /* 中间匹配面板 */
+        .center-panel { width: 450px; background: #fff; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; }
+        .match-header { padding: 16px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; }
+        .match-title { font-size: 16px; font-weight: bold; }
+        .match-actions { display: flex; gap: 8px; }
+        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .btn-primary { background: #1890ff; color: #fff; }
+        .btn-primary:hover { background: #40a9ff; }
+        .btn-success { background: #52c41a; color: #fff; }
+        .btn-success:hover { background: #73d13d; }
+        .btn-default { background: #fff; border: 1px solid #d9d9d9; color: #666; }
+        .btn-default:hover { border-color: #1890ff; color: #1890ff; }
+        .btn-danger { background: #ff4d4f; color: #fff; }
+        .btn-danger:hover { background: #ff7875; }
+        .match-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .equip-info { padding: 16px; border-bottom: 1px solid #e8e8e8; }
+        .info-card { background: #fafafa; border-radius: 4px; padding: 16px; }
+        .info-title { font-size: 14px; font-weight: bold; margin-bottom: 12px; color: #333; }
+        .info-row { display: flex; margin-bottom: 8px; font-size: 13px; }
+        .info-label { width: 80px; color: #666; }
+        .info-value { flex: 1; color: #333; word-break: break-all; }
+        .match-list { flex: 1; padding: 16px; overflow-y: auto; }
+        .match-section { margin-bottom: 24px; }
+        .section-title { font-size: 14px; font-weight: bold; margin-bottom: 12px; color: #333; }
+        .candidate-item { display: flex; align-items: center; padding: 12px; border: 1px solid #e8e8e8; border-radius: 4px; margin-bottom: 8px; cursor: pointer; }
+        .candidate-item:hover { border-color: #1890ff; background: #f0f5ff; }
+        .candidate-item.selected { border-color: #1890ff; background: #e6f7ff; }
+        .candidate-radio { width: 16px; height: 16px; margin-right: 12px; }
+        .candidate-info { flex: 1; }
+        .candidate-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+        .candidate-name span { color: #1890ff; cursor: pointer; }
+        .candidate-detail { font-size: 12px; color: #999; }
+        .candidate-match-score { padding: 4px 8px; background: #52c41a; color: #fff; border-radius: 2px; font-size: 12px; }
+        .candidate-match-score.low { background: #faad14; }
+        .stats-bar { padding: 12px 16px; background: #fafafa; border-top: 1px solid #e8e8e8; display: flex; gap: 24px; }
+        .stat-item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+        .stat-value { font-weight: bold; font-size: 16px; }
+        .stat-value.success { color: #52c41a; }
+        .stat-value.warning { color: #faad14; }
+        
+        /* 右侧视频面板 */
+        .right-panel { flex: 1; background: #000; position: relative; overflow: hidden; }
+        .video-config-bar { position: absolute; top: 10px; left: 10px; padding: 10px; background: rgba(0,0,0,0.8); display: flex; align-items: center; gap: 10px; z-index: 100; border-radius: 4px; }
+        .video-config-bar label { color: #fff; font-size: 13px; white-space: nowrap; }
+        .video-config-bar input { padding: 6px 10px; border: 1px solid #434343; border-radius: 2px; background: #1f1f1f; color: #fff; font-size: 12px; width: 120px; }
+        .video-config-bar button { padding: 6px 16px; border: none; border-radius: 2px; cursor: pointer; font-size: 12px; background: #1890ff; color: #fff; }
+        .video-config-bar button.disconnect { background: #ff4d4f; }
+        #stats { position: absolute; right: 10px; bottom: 10px; pointer-events: none; color: lime; font-size: 12px; text-shadow: black 0 0 0.3em; z-index: 100; white-space: pre-line; }
+        
+        /* 模态框 */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: #fff; border-radius: 8px; width: 600px; max-height: 80vh; display: flex; flex-direction: column; }
+        .modal-header { padding: 16px 24px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; }
+        .modal-title { font-size: 16px; font-weight: bold; }
+        .modal-close { cursor: pointer; font-size: 20px; color: #999; }
+        .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 16px 24px; border-top: 1px solid #e8e8e8; display: flex; justify-content: flex-end; gap: 8px; }
+        .auto-match-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid #e8e8e8; border-radius: 4px; margin-bottom: 8px; }
+        .confidence-bar { width: 100px; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+        .confidence-fill { height: 100%; background: linear-gradient(90deg, #52c41a, #73d13d); }
+        .confidence-text { font-size: 12px; color: #52c41a; min-width: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 左侧设备树 -->
+        <div class="left-panel">
+            <div class="panel-header">设备台账</div>
+            <div class="search-box"><input type="text" id="treeSearch" placeholder="搜索设备..." oninput="filterTree()"></div>
+            <div class="tree-container" id="treeContainer"></div>
+        </div>
+        
+        <!-- 中间匹配面板 -->
+        <div class="center-panel">
+            <div class="match-header">
+                <div class="match-title">设备匹配</div>
+                <div class="match-actions">
+                    <button class="btn btn-default" onclick="autoMatch()">自动匹配</button>
+                    <button class="btn btn-primary" onclick="saveMatches()">保存匹配</button>
+                    <button class="btn btn-default" onclick="exportToDataJson()">导出 data.json</button>
+                </div>
+            </div>
+            <div class="match-content">
+                <div class="equip-info">
+                    <div class="info-card">
+                        <div class="info-title">设备信息</div>
+                        <div class="info-row"><span class="info-label">名称：</span><span class="info-value" id="infoName">-</span></div>
+                        <div class="info-row"><span class="info-label">ID：</span><span class="info-value" id="infoId">-</span></div>
+                        <div class="info-row"><span class="info-label">类型：</span><span class="info-value" id="infoType">-</span></div>
+                        <div class="info-row"><span class="info-label">父节点：</span><span class="info-value" id="infoParent">-</span></div>
+                        <div class="info-row"><span class="info-label">匹配状态：</span><span class="info-value" id="infoStatus">-</span></div>
+                    </div>
+                </div>
+                <div class="match-list" id="matchList"></div>
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item"><span>总设备数：</span><span class="stat-value" id="statTotal">0</span></div>
+                <div class="stat-item"><span>已匹配：</span><span class="stat-value success" id="statMatched">0</span></div>
+                <div class="stat-item"><span>未匹配：</span><span class="stat-value warning" id="statUnmatched">0</span></div>
+            </div>
+        </div>
+        
+        <!-- 右侧视频面板 -->
+        <div class="right-panel">
+            <div class="video-config-bar">
+                <label>📹 像素流</label>
+                <input type="text" id="webrtcIp" placeholder="IP" value="192.168.1.4">
+                <input type="text" id="webrtcPort" placeholder="Port" value="10090">
+                <button id="videoConnectBtn" onclick="connectVideo()">连接</button>
+            </div>
+            <iframe id="videoFrame" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none;" src="about:blank"></iframe>
+            <pre id="stats">Not connected</pre>
+        </div>
+    </div>
+    
+    <!-- 自动匹配模态框 -->
+    <div class="modal-overlay" id="autoMatchModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">自动匹配建议</div><div class="modal-close" onclick="closeModal()">×</div></div>
+            <div class="modal-body" id="autoMatchBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+                <button class="btn btn-success" onclick="applyAllMatches()">全部应用</button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="text/javascript" src="./peer-stream.js"></script>
+    <script type="text/javascript">
+
+        // 全局数据
+        let equipTreeData = [];
+        let digitalTwinData = [];
+        let matches = {};
+        let selectedEquip = null;
+        let expandedNodes = new Set();
+        let ps = null; // peer-stream 实例
+
+        // 加载数据
+        async function loadData() {
+            try {
+                const equipResponse = await fetch('result.json');
+                const equipData = await equipResponse.json();
+                equipTreeData = equipData.result || [];
+
+                const twinResponse = await fetch('data.json');
+                const twinBuffer = await twinResponse.arrayBuffer();
+                const twinText = new TextDecoder('utf-16').decode(twinBuffer);
+                digitalTwinData = JSON.parse(twinText);
+
+                console.log('设备台账:', equipTreeData.length, '个节点');
+                console.log('数字孪生设备:', digitalTwinData.length, '个');
+
+                initMatches();
+                renderTree();
+                updateStats();
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                alert('加载数据失败，请检查文件是否存在');
+            }
+        }
+
+        // 初始化匹配
+        function initMatches() {
+            const twinIndex = new Map();
+            digitalTwinData.forEach(item => {
+                const guidKey = Object.keys(item).find(k => k.includes('GUId') || k.includes('guid'));
+                const idKey = Object.keys(item).find(k => k.includes('Id') && !k.includes('GUId'));
+                const nameKey = Object.keys(item).find(k => k.includes('名称') || k === 'name');
+                
+                if (guidKey) {
+                    const guid = item[guidKey];
+                    const id = idKey ? item[idKey] : '';
+                    const name = nameKey ? item[nameKey] : '';
+                    twinIndex.set(guid.toUpperCase(), { guid, id, name, data: item });
+                }
+            });
+
+            function processNode(node) {
+                if (node.type === 'equip') {
+                    const equipId = node.id.toUpperCase();
+                    for (const [twinGuid, twinInfo] of twinIndex) {
+                        if (twinGuid === equipId || twinInfo.id.toUpperCase() === equipId) {
+                            matches[node.id] = twinGuid;
+                            break;
+                        }
+                    }
+                }
+                if (node.children) node.children.forEach(processNode);
+            }
+            equipTreeData.forEach(processNode);
+        }
+
+        // 渲染树
+        function renderTree() {
+            const container = document.getElementById('treeContainer');
+            container.innerHTML = '';
+            equipTreeData.forEach(node => {
+                container.appendChild(createTreeNode(node, 0));
+            });
+        }
+
+        function createTreeNode(node, level) {
+            const div = document.createElement('div');
+            div.className = 'tree-node';
+            div.style.paddingLeft = (level * 16) + 'px';
+
+            const isStruct = node.type === 'struct';
+            const hasChildren = node.children && node.children.length > 0;
+            const isMatched = node.type === 'equip' && matches[node.id];
+            const isSelected = selectedEquip && selectedEquip.id === node.id;
+
+            div.innerHTML = '<div class="tree-item ' + (isSelected ? 'selected' : '') + ' ' + (node.type === 'equip' ? (isMatched ? 'matched' : 'unmatched') : '') + '" onclick="selectEquip(' + JSON.stringify(node).replace(/"/g, '&quot;') + ')">' +
+                (isStruct ? '<span class="tree-expand" onclick="toggleNode(event, \'' + node.id + '\')">' + (expandedNodes.has(node.id) ? '▼' : '▶') + '</span>' : '<span style="width:20px"></span>') +
+                '<span class="tree-icon">' + (isStruct ? '📁' : '🔧') + '</span>' +
+                '<span class="tree-label">' + node.name + '</span>' +
+                (node.type === 'equip' ? '<span class="tree-status ' + (isMatched ? 'status-matched' : 'status-unmatched') + '">' + (isMatched ? '已匹配' : '未匹配') + '</span>' : '') +
+                '</div>';
+
+            if (hasChildren && expandedNodes.has(node.id)) {
+                node.children.forEach(child => {
+                    div.appendChild(createTreeNode(child, level + 1));
+                });
+            }
+            return div;
+        }
+
+        function toggleNode(event, nodeId) {
+            event.stopPropagation();
+            if (expandedNodes.has(nodeId)) expandedNodes.delete(nodeId);
+            else expandedNodes.add(nodeId);
+            renderTree();
+        }
+
+        function selectEquip(node) {
+            if (node.type !== 'equip') return;
+            selectedEquip = node;
+            renderTree();
+            showEquipInfo(node);
+            showMatchCandidates(node);
+        }
+
+        function showEquipInfo(node) {
+            document.getElementById('infoName').textContent = node.name;
+            document.getElementById('infoId').textContent = node.id;
+            document.getElementById('infoType').textContent = node.type === 'equip' ? '设备' : '结构';
+            document.getElementById('infoParent').textContent = node.parent || '-';
+            
+            const isMatched = matches[node.id];
+            let html = isMatched ? '<span style="color:#52c41a">✓ 已匹配</span>' : '<span style="color:#ff4d4f">✗ 未匹配</span>';
+            
+            if (isMatched) {
+                html += '<button class="btn btn-danger" onclick="cancelMatch()" style="margin-top:8px;width:100%">取消匹配</button>';
+            }
+            document.getElementById('infoStatus').innerHTML = html;
+        }
+
+        function sendFocusMessage(twinId) {
+            const message = { action: "Focus", des: "孪生体聚焦定位", twinId: twinId, time: Date.now().toString(), isOpen: true, ext: {duration: 1} };
+            const video = document.getElementById('playerVideo');
+            if (video && typeof video.emitMessage === 'function') {
+                video.emitMessage(message);
+                console.log('发送 Focus 消息:', message);
+            }
+        }
+
+        function focusTwin(twinId) { sendFocusMessage(twinId); }
+
+        function showMatchCandidates(equip) {
+            const container = document.getElementById('matchList');
+            const currentMatch = matches[equip.id];
+            
+            const nameKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('名称') || k === 'name') : 'name';
+            const guidKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('GUId')) : 'guid';
+            const areaKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('区域')) : 'area';
+            const twinIdKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('设备 Id')) : 'id';
+
+            const candidates = digitalTwinData.map(twin => {
+                const twinName = twin[nameKey] || '';
+                const twinGuid = twin[guidKey] || '';
+                const twinArea = twin[areaKey] || '';
+                const twinId = twin[twinIdKey] || '';
+                const score = calculateSimilarity(equip.name, twinName);
+                return { name: twinName, guid: twinGuid, area: twinArea, twinId: twinId, score: score, isMatch: twinGuid === currentMatch };
+            }).filter(c => c.score > 0.3 || c.isMatch).sort((a, b) => {
+                if (a.isMatch) return -1;
+                if (b.isMatch) return 1;
+                return b.score - a.score;
+            });
+
+            let html = '<div class="match-section"><div class="section-title">🎯 推荐匹配 <span style="font-size:12px;color:#999;font-weight:normal">点击 📍 聚焦定位</span></div>';
+
+            candidates.forEach(c => {
+                const scoreClass = c.score >= 0.7 ? '' : 'low';
+                const scorePercent = Math.round(c.score * 100);
+                html += '<div class="candidate-item ' + (c.isMatch ? 'selected' : '') + '" onclick="selectMatch(\'' + equip.id + '\', \'' + c.guid + '\')">' +
+                    '<input type="radio" name="match" class="candidate-radio" ' + (c.isMatch ? 'checked' : '') + '>' +
+                    '<div class="candidate-info"><div class="candidate-name"><span onclick="event.stopPropagation();focusTwin(\'' + (c.twinId || c.guid) + '\')">📍 ' + c.name + '</span></div>' +
+                    '<div class="candidate-detail">GUID: ' + c.guid + ' | 区域：' + (c.area || '-') + '</div></div>' +
+                    (!c.isMatch ? '<span class="candidate-match-score ' + scoreClass + '">' + scorePercent + '% 匹配</span>' : '<span class="candidate-match-score">当前匹配</span>') +
+                    '</div>';
+            });
+
+            if (candidates.length === 0) html += '<div style="text-align:center;color:#999;padding:40px">暂无匹配候选项</div>';
+            html += '</div>';
+
+            if (currentMatch) {
+                const matchedTwin = digitalTwinData.find(t => t[guidKey] === currentMatch);
+                if (matchedTwin) {
+                    const posKey = Object.keys(matchedTwin).find(k => k.includes('位置'));
+                    const pos = matchedTwin[posKey];
+                    html += '<div class="match-section"><div class="section-title">📍 位置信息</div><div class="info-card">' +
+                        '<div class="info-row"><span class="info-label">X 坐标：</span><span class="info-value">' + (pos?.x?.toFixed(2) || '-') + '</span></div>' +
+                        '<div class="info-row"><span class="info-label">Y 坐标：</span><span class="info-value">' + (pos?.y?.toFixed(2) || '-') + '</span></div>' +
+                        '<div class="info-row"><span class="info-label">Z 坐标：</span><span class="info-value">' + (pos?.z?.toFixed(2) || '-') + '</span></div>' +
+                        '</div></div>';
+                }
+            }
+            container.innerHTML = html;
+        }
+
+        function calculateSimilarity(str1, str2) {
+            if (!str1 || !str2) return 0;
+            const s1 = str1.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+            const s2 = str2.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+            if (s1 === s2) return 1.0;
+            if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+            const key1 = s1.replace(/[0-9#]/g, '');
+            const key2 = s2.replace(/[0-9#]/g, '');
+            if (key1 === key2) return 0.9;
+            if (key1.includes(key2) || key2.includes(key1)) return 0.7;
+            return [...s1].filter(c => s2.includes(c)).length / Math.max(s1.length, s2.length);
+        }
+
+        function selectMatch(equipId, twinGuid) {
+            matches[equipId] = twinGuid;
+            renderTree();
+            if (selectedEquip) { showEquipInfo(selectedEquip); showMatchCandidates(selectedEquip); }
+            updateStats();
+        }
+
+        function cancelMatch() {
+            if (!selectedEquip) return;
+            delete matches[selectedEquip.id];
+            renderTree();
+            showEquipInfo(selectedEquip);
+            showMatchCandidates(selectedEquip);
+            updateStats();
+        }
+
+        function updateStats() {
+            let total = 0, matched = 0;
+            function countNode(node) {
+                if (node.type === 'equip') { total++; if (matches[node.id]) matched++; }
+                if (node.children) node.children.forEach(countNode);
+            }
+            equipTreeData.forEach(countNode);
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statMatched').textContent = matched;
+            document.getElementById('statUnmatched').textContent = total - matched;
+        }
+
+        function autoMatch() {
+            const modal = document.getElementById('autoMatchModal');
+            const body = document.getElementById('autoMatchBody');
+            const suggestions = [];
+            const guidKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('GUId')) : 'guid';
+            const nameKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('名称') || k === 'name') : 'name';
+
+            function findUnmatched(node) {
+                if (node.type === 'equip' && !matches[node.id]) {
+                    let bestMatch = null, bestScore = 0;
+                    digitalTwinData.forEach(twin => {
+                        const score = calculateSimilarity(node.name, twin[nameKey] || '');
+                        if (score > bestScore && score >= 0.6) {
+                            bestScore = score;
+                            bestMatch = { guid: twin[guidKey] || '', name: twin[nameKey] || '', score: score };
+                        }
+                    });
+                    if (bestMatch) suggestions.push({ equip: node, twin: bestMatch });
+                }
+                if (node.children) node.children.forEach(findUnmatched);
+            }
+            equipTreeData.forEach(findUnmatched);
+
+            if (suggestions.length === 0) {
+                body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">没有合适的匹配建议</div>';
+            } else {
+                let html = '';
+                suggestions.forEach(s => {
+                    const pct = Math.round(s.twin.score * 100);
+                    html += '<div class="auto-match-item" data-equip="' + s.equip.id + '" data-twin="' + s.twin.guid + '">' +
+                        '<div class="auto-match-info"><div class="auto-match-name">' + s.equip.name + ' → ' + s.twin.name + '</div>' +
+                        '<div class="auto-match-detail">设备 ID: ' + s.equip.id + ' | GUID: ' + s.twin.guid + '</div></div>' +
+                        '<div class="match-confidence"><div class="confidence-bar"><div class="confidence-fill" style="width:' + pct + '%"></div></div>' +
+                        '<span class="confidence-text">' + pct + '%</span></div></div>';
+                });
+                body.innerHTML = html;
+            }
+            modal.classList.add('show');
+        }
+
+        function closeModal() { document.getElementById('autoMatchModal').classList.remove('show'); }
+
+        function applyAllMatches() {
+            document.querySelectorAll('.auto-match-item').forEach(item => {
+                matches[item.dataset.equip] = item.dataset.twin;
+            });
+            renderTree(); updateStats(); closeModal();
+            if (selectedEquip) { showEquipInfo(selectedEquip); showMatchCandidates(selectedEquip); }
+        }
+
+        function saveMatches() {
+            const data = { timestamp: new Date().toISOString(), matches: matches };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'matches_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click(); URL.revokeObjectURL(url);
+            alert('匹配结果已保存！');
+        }
+
+        function exportToDataJson() {
+            const guidKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('GUId')) : 'guid';
+            const idKey = digitalTwinData.length > 0 ? Object.keys(digitalTwinData[0]).find(k => k.includes('设备 Id')) : 'id';
+            const guidToEquipId = new Map();
+            for (const [equipId, twinGuid] of Object.entries(matches)) guidToEquipId.set(twinGuid.toUpperCase(), equipId);
+            
+            const exportData = digitalTwinData.map(twin => {
+                const twinGuid = twin[guidKey] || '';
+                const equipId = guidToEquipId.get(twinGuid.toUpperCase());
+                const newTwin = {...twin};
+                if (equipId) { if (guidKey) newTwin[guidKey] = equipId; if (idKey) newTwin[idKey] = equipId; }
+                return newTwin;
+            });
+            
+            const jsonString = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([new Uint8Array([0xFF, 0xFE, ...new TextEncoder().encode(jsonString)])], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'data_matched_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click(); URL.revokeObjectURL(url);
+            alert('已导出 data.json 格式文件！');
+        }
+
+        function filterTree() {
+            const keyword = document.getElementById('treeSearch').value.toLowerCase();
+            document.querySelectorAll('.tree-item').forEach(item => {
+                const label = item.querySelector('.tree-label').textContent.toLowerCase();
+                item.style.display = (keyword === '' || label.includes(keyword)) ? 'flex' : 'none';
+            });
+        }
+
+        // ========== 视频流相关 ==========
+        function connectVideo() {
+            const ip = document.getElementById('webrtcIp').value;
+            const port = document.getElementById('webrtcPort').value;
+            const wsUrl = 'ws://' + ip + ':' + port;
+            
+            console.log('连接像素流:', wsUrl);
+            
+            const frame = document.getElementById('videoFrame');
+            frame.src = 'video-player.html?ws=' + encodeURIComponent(wsUrl);
+            frame.style.display = 'block';
+            
+            document.getElementById('videoConnectBtn').textContent = '断开';
+            document.getElementById('videoConnectBtn').classList.add('disconnect');
+            document.getElementById('videoConnectBtn').onclick = disconnectVideo;
+        }
+
+        function disconnectVideo() {
+            const frame = document.getElementById('videoFrame');
+            frame.src = 'about:blank';
+            frame.style.display = 'none';
+            
+            document.getElementById('videoConnectBtn').textContent = '连接';
+            document.getElementById('videoConnectBtn').classList.remove('disconnect');
+            document.getElementById('videoConnectBtn').onclick = connectVideo;
+            document.getElementById('stats').textContent = 'Not connected';
+        }
+
+        // 初始化
+        loadData();
+    </script>
+</body>
+</html>
